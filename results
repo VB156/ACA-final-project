@@ -1,0 +1,25 @@
+STFT kernels created, time used = 0.0315 seconds
+STFT filter created, time used = 0.0063 seconds
+Mel filter created, time used = 0.0064 seconds
+Epoch [1/20], Train Loss: 1.5952, Train Acc: 63.08%, Val Loss: 1.3968, Val Acc: 65.33%
+Epoch [2/20], Train Loss: 1.5411, Train Acc: 63.17%, Val Loss: 1.5178, Val Acc: 65.00%
+Epoch [3/20], Train Loss: 1.4816, Train Acc: 63.38%, Val Loss: 1.3813, Val Acc: 65.50%
+Epoch [4/20], Train Loss: 1.4645, Train Acc: 63.08%, Val Loss: 1.3774, Val Acc: 64.83%
+Epoch [5/20], Train Loss: 1.4398, Train Acc: 63.38%, Val Loss: 1.3475, Val Acc: 65.33%
+Epoch [6/20], Train Loss: 1.4063, Train Acc: 63.46%, Val Loss: 1.3227, Val Acc: 65.17%
+Epoch [7/20], Train Loss: 1.3663, Train Acc: 63.62%, Val Loss: 1.3304, Val Acc: 65.33%
+Epoch [8/20], Train Loss: 1.3182, Train Acc: 63.46%, Val Loss: 1.2561, Val Acc: 65.33%
+Epoch [9/20], Train Loss: 1.2772, Train Acc: 63.92%, Val Loss: 1.2256, Val Acc: 65.50%
+Epoch [10/20], Train Loss: 1.2478, Train Acc: 64.46%, Val Loss: 1.2190, Val Acc: 63.50%
+Epoch [11/20], Train Loss: 1.1882, Train Acc: 64.88%, Val Loss: 1.2470, Val Acc: 65.33%
+Epoch [12/20], Train Loss: 1.1585, Train Acc: 64.79%, Val Loss: 1.2338, Val Acc: 64.67%
+Epoch [13/20], Train Loss: 1.1263, Train Acc: 66.12%, Val Loss: 1.2629, Val Acc: 66.00%
+Epoch [14/20], Train Loss: 1.0866, Train Acc: 66.92%, Val Loss: 1.2335, Val Acc: 65.00%
+Epoch [15/20], Train Loss: 1.0363, Train Acc: 67.75%, Val Loss: 1.1178, Val Acc: 65.83%
+Epoch [16/20], Train Loss: 0.9898, Train Acc: 68.25%, Val Loss: 1.2200, Val Acc: 64.17%
+Epoch [17/20], Train Loss: 0.9737, Train Acc: 68.92%, Val Loss: 1.1515, Val Acc: 64.67%
+Epoch [18/20], Train Loss: 0.9423, Train Acc: 69.79%, Val Loss: 1.1616, Val Acc: 64.00%
+Epoch [19/20], Train Loss: 0.8933, Train Acc: 71.75%, Val Loss: 1.1254, Val Acc: 67.00%
+Epoch [20/20], Train Loss: 0.8582, Train Acc: 72.58%, Val Loss: 1.3365, Val Acc: 51.17%
+
+

@@ -1,0 +1,201 @@
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import DataLoader, random_split, Dataset
+from nnAudio.features import MelSpectrogram
+import matplotlib.pyplot as plt
+import tensorflow as tf
+import tensorflow_datasets as tfds
+import torchaudio.transforms as transforms
+import random
+import numpy as np
+
+# Load the TensorFlow Speech Commands dataset
+ds_train = tfds.load('speech_commands:0.0.3', split='train', as_supervised=True)
+ds_test = tfds.load('speech_commands:0.0.3', split='test', as_supervised=True)
+
+# Custom Dataset to handle TensorFlow dataset
+class TFToTorchDataset(Dataset):
+    def __init__(self, tf_dataset, fixed_length=16000, limit=None, augment=False):
+        self.tf_dataset = tf_dataset
+        self.fixed_length = fixed_length
+        self.limit = limit
+        self.data = list(self._convert_to_torch())
+        self.transform = transforms.Resample(orig_freq=16000, new_freq=16000)
+        self.augment = augment
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        waveform, label = self.data[idx]
+        waveform = self.transform(waveform)
+        waveform = self._pad_or_truncate(waveform)
+
+        if self.augment:
+            waveform = self._augment(waveform)
+
+        return waveform, label
+
+    def _convert_to_torch(self):
+        for i, (waveform, label) in enumerate(self.tf_dataset):
+            if self.limit and i >= self.limit:
+                break
+            waveform = torch.tensor(waveform.numpy(), dtype=torch.float32).unsqueeze(0)
+            label = torch.tensor(label.numpy(), dtype=torch.long)
+            yield waveform, label
+
+    def _pad_or_truncate(self, waveform):
+        if waveform.size(1) > self.fixed_length:
+            waveform = waveform[:, :self.fixed_length]
+        elif waveform.size(1) < self.fixed_length:
+            padding = self.fixed_length - waveform.size(1)
+            waveform = torch.nn.functional.pad(waveform, (0, padding))
+        return waveform
+
+    def _augment(self, waveform):
+        if random.random() < 0.5:
+            waveform = waveform + 0.002 * torch.randn(waveform.size())
+        if random.random() < 0.5:
+            shift = int(random.uniform(-0.1, 0.1) * self.fixed_length)
+            waveform = torch.roll(waveform, shift)
+        return waveform
+
+# Convert TensorFlow datasets to PyTorch datasets
+train_dataset = TFToTorchDataset(ds_train, limit=3000, augment=True)
+test_dataset = TFToTorchDataset(ds_test, limit=500)
+
+train_size = int(0.8 * len(train_dataset))
+val_size = len(train_dataset) - train_size
+train_dataset, val_dataset = random_split(train_dataset, [train_size, val_size])
+
+train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=4, pin_memory=True)
+val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False, num_workers=4, pin_memory=True)
+test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False, num_workers=4, pin_memory=True)
+
+# Enhanced CNN model
+class EnhancedKWSModel(nn.Module):
+    def __init__(self):
+        super(EnhancedKWSModel, self).__init__()
+        self.mel_spectrogram = MelSpectrogram(n_mels=128, sr=16000, n_fft=1024, hop_length=512)
+        self.conv1 = nn.Conv2d(1, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+        self.bn1 = nn.BatchNorm2d(64)
+        self.conv2 = nn.Conv2d(64, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+        self.bn2 = nn.BatchNorm2d(128)
+        self.conv3 = nn.Conv2d(128, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+        self.bn3 = nn.BatchNorm2d(256)
+        self.pool = nn.MaxPool2d(2, 2)
+        self.dropout = nn.Dropout(0.5)
+        self.fc1 = nn.Linear(256 * 16 * 4, 512)
+        self.fc2 = nn.Linear(512, 128)
+        self.fc3 = nn.Linear(128, 12)
+
+    def forward(self, x):
+        x = self.mel_spectrogram(x)
+        x = x.unsqueeze(1)
+        x = torch.relu(self.bn1(self.conv1(x)))
+        x = self.pool(x)
+        x = torch.relu(self.bn2(self.conv2(x)))
+        x = self.pool(x)
+        x = torch.relu(self.bn3(self.conv3(x)))
+        x = self.pool(x)
+        x = x.view(x.size(0), -1)
+        x = torch.relu(self.dropout(self.fc1(x)))
+        x = torch.relu(self.fc2(x))
+        x = self.fc3(x)
+        return x
+
+model = EnhancedKWSModel()
+
+# Loss function, optimizer, and learning rate scheduler
+criterion = nn.CrossEntropyLoss()
+optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-4)
+scheduler = optim.lr_scheduler.OneCycleLR(optimizer, max_lr=0.005, steps_per_epoch=len(train_loader), epochs=50)
+
+# Training loop
+def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs=50):
+    train_losses, val_losses, train_accuracies, val_accuracies = [], [], [], []
+
+    for epoch in range(num_epochs):
+        model.train()
+        running_loss, correct, total = 0.0, 0, 0
+
+        for inputs, labels in train_loader:
+            optimizer.zero_grad()
+            outputs = model(inputs)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            optimizer.step()
+
+            running_loss += loss.item()
+            _, predicted = torch.max(outputs.data, 1)
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+
+        train_losses.append(running_loss / len(train_loader))
+        train_accuracies.append(100 * correct / total)
+
+        model.eval()
+        val_loss, val_correct, val_total = 0.0, 0, 0
+        with torch.no_grad():
+            for inputs, labels in val_loader:
+                outputs = model(inputs)
+                loss = criterion(outputs, labels)
+                val_loss += loss.item()
+                _, predicted = torch.max(outputs.data, 1)
+                val_total += labels.size(0)
+                val_correct += (predicted == labels).sum().item()
+
+        val_losses.append(val_loss / len(val_loader))
+        val_accuracies.append(100 * val_correct / val_total)
+
+        scheduler.step()
+
+        print(f'Epoch [{epoch+1}/{num_epochs}], Train Loss: {train_losses[-1]:.4f}, Train Acc: {train_accuracies[-1]:.2f}%, '
+              f'Val Loss: {val_losses[-1]:.4f}, Val Acc: {val_accuracies[-1]:.2f}%')
+
+    plt.figure(figsize=(12, 5))
+    plt.subplot(1, 2, 1)
+    plt.plot(range(1, num_epochs + 1), train_losses, label='Train Loss')
+    plt.plot(range(1, num_epochs + 1), val_losses, label='Val Loss')
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss')
+    plt.title('Loss over Epochs')
+    plt.legend()
+
+    plt.subplot(1, 2, 2)
+    plt.plot(range(1, num_epochs + 1), train_accuracies, label='Train Acc')
+    plt.plot(range(1, num_epochs + 1), val_accuracies, label='Val Acc')
+    plt.xlabel('Epochs')
+    plt.ylabel('Accuracy (%)')
+    plt.title('Accuracy over Epochs')
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+# Testing loop
+def test_model(model, test_loader):
+    model.eval()
+    correct, total = 0, 0
+    with torch.no_grad():
+        for inputs, labels in test_loader:
+            outputs = model(inputs)
+            _, predicted = torch.max(outputs.data, 1)
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+
+    accuracy = 100 * correct / total
+    print(f'Test Set Accuracy: {accuracy:.2f}%')
+
+    plt.figure(figsize=(5, 5))
+    plt.bar(['Test Set'], [accuracy])
+    plt.ylim(0, 100)
+    plt.ylabel('Accuracy (%)')
+    plt.title('Accuracy on Test Set')
+    plt.show()
+
+# Train and test the model
+train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs=20)
+test_model(model, test_loader)
+
